@@ -1,4 +1,4 @@
-const { TableClient, AzureSASCredential } = require("@azure/data-tables");
+const nodemailer = require("nodemailer");
 
 module.exports = async function (context, req) {
     context.log("Form submission received");
@@ -11,32 +11,53 @@ module.exports = async function (context, req) {
         return;
     }
 
-    const connectionString = 'DefaultEndpointsProtocol=https;AccountName=allyworkspace;AccountKey=fm/FrAaUVoCoywT+X/oTvdTNXLnUiTtQDF80VL2MCASS2coPPHcwrm8l96ufm52uEj2wSx1ra2gW+AStPU9ymQ==;EndpointSuffix=core.windows.net' ;
-    const tableName = "FormSubmissions";
-
-    // Create Table client
-    const { TableClient } = require("@azure/data-tables");
-    const tableClient = TableClient.fromConnectionString(connectionString, tableName);
-
-    // Ensure table exists
-    await tableClient.createTable();
-
-    // Build submission entity
     const submission = {
-        partitionKey: "Form",
-        rowKey: Date.now().toString(),
         name: req.body.name || "unknown user",
         email: req.body.email || "dummy email",
+        message: req.body.message || "no message",
         timestamp: new Date().toISOString()
     };
 
-    // Insert into Table
-    await tableClient.createEntity(submission);
+    try {
+        // Configure transporter (use Gmail SMTP)
+        let transporter = nodemailer.createTransport({
+            service: "gmail",
+            auth: {
+                user: 'notifications@allysolutions.ai',  // your Gmail address
+                pass: "fnha kenl dsnx wdpw"   // app password (not regular Gmail password!)
+            }
+        });
 
-    context.log("Saved submission:", submission);
+        // Send email
+        let info = await transporter.sendMail({
+            from: 'notifications@allysolutions.ai',
+            to: "vivek@allysolutions.ai",
+            subject: "📩 New Form Submission",
+            text: `You received a new form submission:
+            
+Name: ${submission.name}
+Email: ${submission.email}
+Message: ${submission.message}
+Timestamp: ${submission.timestamp}
+            `,
+            html: `<h3>New Form Submission</h3>
+                   <p><b>Name:</b> ${submission.name}</p>
+                   <p><b>Email:</b> ${submission.email}</p>
+                   <p><b>Message:</b> ${submission.message}</p>
+                   <p><b>Time:</b> ${submission.timestamp}</p>`
+        });
 
-    context.res = {
-        status: 200,
-        body: { success: true, saved: submission }
-    };
+        context.log("Email sent:", info.messageId);
+
+        context.res = {
+            status: 200,
+            body: { success: true, sent: submission }
+        };
+    } catch (err) {
+        context.log.error("Error sending email:", err);
+        context.res = {
+            status: 500,
+            body: { error: "Failed to send email" }
+        };
+    }
 };
